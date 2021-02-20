@@ -7,4 +7,7 @@ import cn.summer.annotations.Component;
 public class SummerParent {
     @AutoWired
     public SummerTest summerTest;
+    public void test(){
+        System.out.println("hello summer from parent");
+    }
 }

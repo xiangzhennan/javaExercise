@@ -10,6 +10,8 @@ public class Launcher {
     public static void main(String[] args) {
         AnnotationApplicationContext annotationApplicationContext = new AnnotationApplicationContext(Launcher.class);
         SummerParent summerParent = (SummerParent) annotationApplicationContext.getBean("summerParent");
+        SummerTest summerTest = (SummerTest) annotationApplicationContext.getBean("summerTest");
         summerParent.summerTest.test();
+        summerTest.summerParent.test();
     }
 }

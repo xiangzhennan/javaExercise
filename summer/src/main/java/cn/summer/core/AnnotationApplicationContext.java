@@ -12,14 +12,14 @@ import java.util.HashMap;
 
 public class AnnotationApplicationContext implements ApplicationContext {
     private Class configClass;
-    private HashMap<String , Object> ioc;
+    private HashMap<String, Object> singletonObjectMap;
+    private HashMap<String, Object> instanceMap;
     private HashMap<String, BeanDefination> beanDefinationMap;
 
-    public AnnotationApplicationContext(Class configClass){
-        //ioc and definationMap are big objects, need to be singleton
-        //but lets take care of it later
-        ioc = new HashMap<>();
+    public AnnotationApplicationContext(Class<?> configClass){
+        singletonObjectMap = new HashMap<>();
         beanDefinationMap = new HashMap<>();
+        instanceMap = new HashMap<>();
         this.configClass = configClass;
         //read all config info, create defination class for each bean
         collectBeanDefinations();
@@ -87,40 +87,57 @@ public class AnnotationApplicationContext implements ApplicationContext {
 
     private Object createBean(String beanName) {
         BeanDefination beanDefination = beanDefinationMap.get(beanName);
-        Class beanClass = beanDefination.getBeanClass();
+        //if found instance in cache
+        if (instanceMap.containsKey(beanName)){
+            Object instance = instanceMap.get(beanName);
+            instanceMap.remove(beanName);
+            singletonObjectMap.put(beanName,instance);
+            singletonObjectMap.put(instance.getClass().getName(),instance);
+            return instance;
+        }
+        //not in cache, new instance
+        Class<?> beanClass = beanDefination.getBeanClass();
         try {
             Object instance = beanClass.getDeclaredConstructor().newInstance();
-            Field[] fields = beanClass.getDeclaredFields();
-            for (Field field :fields) {
-                //if need injection, get bean from ioc, or create new bean
-                if (field.isAnnotationPresent(AutoWired.class)){
-                    Object filedBean = getBean(field.getName());
-                    if (filedBean == null){
-                        filedBean = createBean(field.getName());
-                    }
-                    //inject by type
-                    field.setAccessible(true);
-                    field.set(instance,filedBean);
-                }
-            }
-            ioc.put(beanName,instance);
-            ioc.put(instance.getClass().getName(),instance);
+            //put into cache
+            instanceMap.put(beanName,instance);
+            populate(instance,beanDefination);
+            instanceMap.remove(beanName);
+            singletonObjectMap.put(beanName,instance);
+            singletonObjectMap.put(instance.getClass().getName(),instance);
             return instance;
-        } catch (NoSuchMethodException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (InvocationTargetException e) {
+        } catch (NoSuchMethodException | IllegalAccessException |
+                InstantiationException | InvocationTargetException e) {
             e.printStackTrace();
         }
         return null;
     }
 
+    private void populate(Object instance, BeanDefination beanDefination) {
+        Class<?> beanClass = beanDefination.getBeanClass();
+        Field[] fields = beanClass.getDeclaredFields();
+        for (Field field :fields) {
+            //if need injection, get bean from ioc, or create new bean
+            if (field.isAnnotationPresent(AutoWired.class)){
+                Object filedBean = getBean(field.getName());
+                if (filedBean == null){
+                    filedBean = createBean(field.getName());
+                }
+                //inject by type
+                field.setAccessible(true);
+                try {
+                    field.set(instance,filedBean);
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
     @Override
     public Object getBean(String beanName) {
-        Object o = ioc.get(beanName);
+        //priority, get from ioc container
+        Object o = singletonObjectMap.get(beanName);
         if (o == null){
             return createBean(beanName);
         }
@@ -128,7 +145,7 @@ public class AnnotationApplicationContext implements ApplicationContext {
     }
 
     @Override
-    public Object getBean(Class clazz) {
+    public Object getBean(Class<?> clazz) {
         return getBean(clazz.getName());
     }
 }
